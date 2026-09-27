@@ -46,3 +46,14 @@ PYTHONPATH=src .venv/bin/python -m pytest -q
 ## Phase 3.1 order conflict evidence
 
 The three raw duplicate order pairs differ only in `traffic_bucket`; see `ARCHITECTURE.md` for every disputed value and SQLite rowid. `validate_sources` reports `UNRESOLVED_TRAFFIC_BUCKET` as WARN and `CONFLICTING_ORDER_IDS` as FAIL only when another original order column differs. `clean_sources` returns 1,600 canonical orders on the supplied inputs. Its JSON-safe `action_report["sources"]["orders"]` includes `reconciled_order_ids`, `unresolved_traffic_classifications`, and a `reconcile_noncritical_traffic_conflict` action with each ID's zero-based `source_rows`, `differing_columns`, and original `traffic_values`. The cleaned row has null `traffic_bucket` and both references in `_source_rows`. Treat that null as unknown. Any critical duplicate conflict is quarantined and closes the gate; the unapproved KPI and external outcome-label authority remain unresolved.
+
+## Phase 4 in-memory model and metrics
+
+From the repository root, run the focused and complete suites with the existing environment:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m pytest -q tests/test_transform_metrics.py
+PYTHONPATH=src .venv/bin/python -m pytest -q
+```
+
+`build_order_journey(cleaned_sources, cleaning_report) -> pd.DataFrame` requires the report returned by `clean_sources`; a FAIL or missing gate raises `ModelContractError`. It checks one row per canonical order, reduces each child to one row per `order_id`, verifies uniqueness before each left join, and preserves source-row order lineage. `calculate_metrics(order_journey) -> dict` returns five JSON-serializable descriptive analyses: unapproved candidate LDR, the >10-minute variant, observed lifecycle durations, intervention association, and traffic segmentation. Neither function writes outputs or invokes orchestration. The three unresolved traffic values remain null in the model and appear only in an `unknown/missing` analysis group.

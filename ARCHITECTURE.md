@@ -58,7 +58,7 @@ No organizational data owner is identified in the supplied materials. Entries be
 
 ### Unapproved working definition for Phase 2 validation
 
-Until a KPI owner approves a contract, Phase 2 may calculate a clearly labelled **candidate operational LDR** for comparison only:
+Until a KPI owner approves a contract, the analytical layer calculates a clearly labelled **candidate operational LDR** for comparison only:
 
 - **Numerator:** delivered orders with non-null `promised_eta` and `actual_delivery_at` where actual delivery is later than promised ETA.
 - **Denominator:** delivered orders with both timestamps present.
@@ -127,7 +127,7 @@ The `logs/` and `data/processed/` directories are retained in Git with placehold
 
 - `DISPATCH_API_URL` is the service base URL. The documented classroom default is `http://127.0.0.1:8000`; Phase 2 will append `/health` or `/dispatch/orders` as appropriate.
 - `.env.example` documents shell environment variables; `PipelineConfig.from_env()` reads the process environment and does not load `.env` automatically.
-- `src/pipeline/__init__.py` makes the pipeline package explicit. Until Phase 2 adds the single pipeline entry point, import checks should be run from the project root with `PYTHONPATH=src`, for example: `PYTHONPATH=src python3 -c "from pipeline.config import PipelineConfig"`.
+- `src/pipeline/__init__.py` makes the pipeline package explicit. Until final orchestration adds an entry point, imports and tests run from the project root with `PYTHONPATH=src`, for example: `PYTHONPATH=src python3 -c "from pipeline.config import PipelineConfig"`.
 - The submission-owned mock service runs with `python3 -m mock_api.server`; extraction no longer depends on the sibling `reference/` directory.
 
 ## 8. Phase 3 measured quality and cleaning decisions
@@ -177,3 +177,24 @@ Structural source/schema/key failures and mismatched Dispatch order coverage rem
 ### Phase 4 handoff
 
 The Phase 2 extractor and Phase 3 quality layer now provide source-level inputs, measured defects, 1,600 canonical orders, cleaned copies and quarantine evidence. Phase 4 may continue under a WARN gate but must treat the three null traffic values as unknown, retain lineage and action evidence, keep `order_outcomes` as an unverified external label source, aggregate one-to-many children before joining, and avoid inferring missing milestones or a stakeholder-approved KPI definition. Any future critical duplicate order conflict closes the gate.
+
+## 10. Phase 4 order journey and measured findings
+
+`build_order_journey(cleaned_sources, cleaning_report)` requires an explicit PASS/WARN cleaning report; FAIL or absent reports are rejected. The returned in-memory model has **1,600 rows and 1,600 unique order IDs** on the supplied snapshot. SQLite orders define the population; SQLite customers, drivers and restaurants are many-to-one dimensions. The CSV restaurant copy is a cross-check only. Every child source is summarized to a unique `order_id` before a left join, with right-side uniqueness and post-join row-count checks. The summaries cover order-event types and first observed milestones; separately flattened driver telemetry types, assigned/pickup/delivery/GPS counts and first times; normalized restaurant-status counts and latest timestamped status (source-row order breaks ties); and app/ETA-view activity, interactions, tickets and interventions. Dispatch joins 1:1. External outcome fields are prefixed `external_outcome_` and are never used to calculate metrics. The model omits customer names/emails and support free text. Source availability is required by the gate, so absent child observations produce zero counts but null milestone times. Three unresolved traffic values remain null in the model.
+
+`calculate_metrics(order_journey)` returns JSON-serializable descriptive evidence. These definitions are **not stakeholder-approved**; refunds, owner, outcome-label authority and naive-timezone interpretation remain unresolved. Eligible LDR population is delivered orders with comparable non-null promised ETA and actual delivery time; cancellations are excluded by construction. Rates below are descriptive, not significance or causal claims.
+
+| Analysis | Measured result | Eligibility/exclusions |
+|---|---|---|
+| Candidate operational LDR, actual > promised ETA | **843 / 1,495 = 56.39%** | 37 delivered orders lack an actual delivery time; 68 cancellations excluded. |
+| Support variant, >10 minutes late | **349 / 1,495 = 23.34%** | Same working denominator; no approval of this denominator is implied. |
+| Creation → pickup | Mean **27.69 min** over 1,600 valid orders; late-group mean **33.79 min** (843) versus on-time/early **19.77 min** (652). | No missing or invalid segment times. Late-group comparison uses the LDR-eligible population. |
+| Pickup → delivery | Mean **45.79 min** over 1,490 valid orders; late-group mean **47.66 min** (841) versus on-time/early **43.36 min** (649). | 105 missing delivery times and 5 chronologically invalid durations excluded; those five remain diagnosed, not repaired. |
+| Recorded intervention association | **228 / 404 = 56.44%** late with intervention; **615 / 1,091 = 56.37%** without. | 430 versus 1,170 total orders; 26 versus 79 ineligible. First intervention was before delivery for 359 orders, at/after for 45, and delivery time missing for 26. No causal claim. |
+| Traffic segmentation | Low **178/360 = 49.44%**; medium **301/586 = 51.37%**; high **282/424 = 66.51%**; severe **81/122 = 66.39%**; unknown/missing **1/3**. | Only grouping labels are case/whitespace-normalized: three raw `HIGH` values group with `high`; the order field is unchanged. The three unresolved traffic classifications stay in `unknown/missing`, not a real traffic category. |
+
+The larger late-versus-on-time observed segment gap is creation → pickup (about 14.02 minutes versus about 4.30 minutes for pickup → delivery). This does **not** identify the cause of lateness: promised-time allocation and the missing `driver_arrived_at_restaurant` milestone limit attribution. No statistical significance test was performed.
+
+### Phase 5 handoff
+
+Publish only a model built under the explicit quality gate. Preserve its order-grain and source-row lineage, the quality/action reports, and the five metric definitions with eligibility and exclusions. Obtain KPI ownership/denominator/refund decisions before representing candidate LDR as an approved business KPI; keep external outcomes as unverified comparison labels. No orchestration or publishing is implemented in Phase 4.
