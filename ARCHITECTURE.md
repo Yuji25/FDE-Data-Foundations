@@ -130,7 +130,33 @@ The `logs/` and `data/processed/` directories are retained in Git with placehold
 - `src/pipeline/__init__.py` makes the pipeline package explicit. Until Phase 2 adds the single pipeline entry point, import checks should be run from the project root with `PYTHONPATH=src`, for example: `PYTHONPATH=src python3 -c "from pipeline.config import PipelineConfig"`.
 - The submission-owned mock service runs with `python3 -m mock_api.server`; extraction no longer depends on the sibling `reference/` directory.
 
-## 8. Decision register and Phase 2 handoff
+## 8. Phase 3 measured quality and cleaning decisions
+
+A full profile of the 12 local files and the 1,600-record Dispatch fixture found:
+
+| Finding | Observed count | Gate and treatment |
+|---|---:|---|
+| SQLite order rows / distinct IDs | 1,603 / 1,600 | Full-column comparison confirmed each pair differs only in `traffic_bucket`. WARN: retain one canonical order per ID, set traffic to null, and preserve both original values and source rows. Cleaned order count is 1,600; no order leaves the population. |
+| Support ticket ID collision | 2 rows, 1 ID | Exact duplicate `T00013`: WARN; retain one with lineage `[12, 201]`. |
+| Customer interaction ID collisions | 6 rows, 3 IDs | Conflicting `CI-0178` through `CI-0180`: WARN; quarantine all six pending source-owner resolution. |
+| Delivered orders with missing actual delivery time | 37 | WARN; preserve null. The other 68 missing actual times are cancelled orders. Candidate LDR excludes rows without both timestamps; approval of that denominator remains pending. |
+| Order chronology | 4 creation-after-promise; 5 pickup-after-delivery | WARN; preserve observed values and original text. Do not fabricate corrected times. |
+| Missing order dimension keys | 3 driver IDs; 3 restaurant IDs | WARN; preserve null keys. All non-null order customer/driver/restaurant keys match their SQLite dimensions. |
+| Support tickets without an order ID | 3 | WARN; retain unlinked records for audit. |
+| Order events | 37 delivered orders lack `DELIVERED` event | WARN; no inferred milestone. `ORDER_CREATED` coverage is complete. |
+| Nested driver telemetry | 10,035 events; no arrival-at-restaurant event | WARN; preserve missing milestone. No nested order or driver orphans observed. |
+| Order/outcome status, late flag and delay comparison | 0 observed disagreements | PASS for measured comparisons; outcome lineage and authority remain unverified. |
+| Dispatch order coverage | 1,600 distinct IDs for 1,600 distinct orders | PASS for the fixture snapshot. Phase 2 extractor separately checks page/count completion. |
+
+The raw SQLite pairs were compared across all 13 business columns, including nulls and timestamp strings. Every nontraffic value matched exactly. The differing values are `O00120`: `severe` / `medium` (SQLite rowids 120 / 1601); `O00723`: `medium` / `high` (rowids 723 / 1602); and `O01302`: `medium` / `high` (rowids 1302 / 1603). Rowid differs because these are separate physical rows. In the extracted DataFrame, the corresponding zero-based source rows are `[119, 1600]`, `[722, 1601]`, and `[1301, 1602]`.
+
+**Order conflict policy:** Compare every original order column with null-aware exact equality before normalization. Exact duplicates collapse with all source-row references retained. A pair differing *only* in `traffic_bucket` becomes one canonical row with `traffic_bucket = null`, both source rows in `_source_rows`, and the disputed values in JSON-safe `reconcile_noncritical_traffic_conflict` action evidence. This reports three reconciled IDs and three unresolved traffic classifications. Null traffic means **unknown**, never a traffic category. Any disagreement in another column—including order keys, status, timestamps, foreign keys, distance, weather, or a null/value mismatch—is critical: quarantine all rows for that ID and set the gate to FAIL. No arbitrary first/last-row winner is chosen for critical conflicts.
+
+Structural source/schema/key failures and mismatched Dispatch order coverage remain fatal. Recoverable missing fields, lifecycle anomalies, and child-source collisions remain quantified warnings. With the three verified traffic-only conflicts reconciled, the **current overall gate is WARN** and `can_continue` is true. The original 1,600-order population is preserved, although traffic-based analysis cannot classify these three orders without source-owner clarification.
+
+`validate_sources(sources, dispatch)` returns copied inputs, a JSON-safe report, and `can_continue`. `clean_sources(sources, dispatch)` returns cleaned copies and a JSON-safe action report; quarantined full rows are in `cleaned["_quarantine"]`. Source-row lineage and original timestamp text are retained. Valid timestamps become Python `datetime` values without assigning a timezone to naive inputs. Known case variants of delivered/cancelled are normalized with original status retained. Unknown statuses and external outcome labels are not silently rewritten.
+
+## 9. Decision register and handoff
 
 ### Confirmed facts
 
@@ -148,6 +174,6 @@ The `logs/` and `data/processed/` directories are retained in Git with placehold
 - Refund treatment remains unresolved.
 - `order_outcomes.csv` derivation lineage and authority must be checked before using its flags as truth.
 
-### Extraction handoff
+### Phase 4 handoff
 
-The Phase 2 extraction layer now loads the local sources without cleaning and retrieves a complete Dispatch snapshot with retries, page/count/uniqueness evidence, raw-page preservation, and partition replacement on rerun. Future authorized stages may consume these outputs, but must not silently resolve the KPI or source-ownership questions recorded above.
+The Phase 2 extractor and Phase 3 quality layer now provide source-level inputs, measured defects, 1,600 canonical orders, cleaned copies and quarantine evidence. Phase 4 may continue under a WARN gate but must treat the three null traffic values as unknown, retain lineage and action evidence, keep `order_outcomes` as an unverified external label source, aggregate one-to-many children before joining, and avoid inferring missing milestones or a stakeholder-approved KPI definition. Any future critical duplicate order conflict closes the gate.
