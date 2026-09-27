@@ -35,4 +35,6 @@ logs/*
 !logs/.gitkeep
 data/processed/*
 !data/processed/.gitkeep
+# Retrieved API snapshots are generated per run date; the 12 supplied inputs remain tracked.
+data/raw/dispatch/
 # Note: data/raw/ is explicitly NOT ignored so we can preserve the raw classroom dataset.

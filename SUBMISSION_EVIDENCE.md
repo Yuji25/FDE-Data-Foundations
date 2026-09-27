@@ -1,0 +1,14 @@
+# Submission evidence — FlashEats Track A
+
+The configured Git remote is <https://github.com/Yuji25/FDE-Data-Foundations>. The submitter must push the final changes and verify that the repository is accessible before providing this URL as the assignment submission.
+
+| Assignment evidence | Project location and reproducible check | Observed evidence |
+|---|---|---|
+| Class 4: business question → information → sources; ownership, grain and gaps | [ARCHITECTURE.md](ARCHITECTURE.md#2-business-questions-and-information-needs), complete [source map](ARCHITECTURE.md#3-complete-source-map-and-data-grains), and [workflow diagram](ARCHITECTURE.md#5-workflow-data-model) | Track A, order grain; owner not invented; arrival-at-restaurant gap documented. |
+| Class 5: SQL, API and file retrieval with raw preservation | `src/pipeline/extract.py`, `mock_api/server.py`, `tests/test_extract.py`; run `PYTHONPATH=src .venv/bin/python -m pytest -q tests/test_extract.py` | Read-only SQLite, eight CSV and three JSON files; eight paginated Dispatch pages and 1,600 unique records preserved under `data/raw/dispatch/run_date=.../`. |
+| Class 6: profile, validate and defensible cleaning | `src/pipeline/validate.py`, `src/pipeline/clean.py`, `tests/test_quality.py`; published `quality_report.json` and `cleaning_report.json` | WARN gate; 1,603 raw order rows → 1,600 canonical; three traffic-only duplicate IDs reconciled to unknown traffic with both raw values retained; critical-field conflicts fail. |
+| Class 7: workflow model, aggregate-before-join and 3–5 KPI-linked analyses | `src/pipeline/transform.py`, `src/pipeline/metrics.py`, `tests/test_transform_metrics.py`; published `order_journey.jsonl` and `metrics.json` | 1,600 rows and unique IDs; five descriptive analyses. Candidate LDR 843/1,495; >10-minute variant 349/1,495. External outcome labels do not define metrics. |
+| Class 8: dependable repeatable pipeline, checks, logs and failures | `src/pipeline/main.py`, `tests/test_main.py`; `PYTHONPATH=src .venv/bin/python -m pipeline.main --run-date 2026-09-27 --start-mock` | Complete real run: WARN, eight API pages, 1,600 model rows; staged evidence, idempotent replacement, FAIL diagnostics and nonzero exit. |
+| README, setup, decision use and final evidence | [README.md](README.md), [DEVELOPMENT.md](DEVELOPMENT.md), this table, [DEMO.md](DEMO.md) | Exact commands, five results, Known/Unknown/Assumption/Limitation, artifact tree and a 3–5-minute script. |
+
+All linked documents and cited code/test paths are relative to this repository root. The actual run's generated outputs are local and Git-ignored, not files to expect in a fresh clone. Reproduce them with the one-command invocation above; inspect `data/processed/run_date=2026-09-27/run_manifest.json` for the run inventory. No screenshots or stakeholder sign-off are claimed.

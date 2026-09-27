@@ -5,7 +5,7 @@
 - **Track:** A - FlashEats.
 - **Business KPI:** Reduce Late Delivery Rate (LDR).
 - **Primary business question:** Where in the order lifecycle do delays accumulate, and which interventions are associated with better outcomes?
-- **Analytical grain:** The published `order_journey` model will contain exactly one row per `order_id` after agreed deduplication rules are applied.
+- **Analytical grain:** The published `order_journey` model contains exactly one row per `order_id` after documented deduplication rules are applied.
 
 The local driver telemetry contains `assigned`, `gps_ping`, `picked_up`, and `delivered` events, but no `driver_arrived_at_restaurant` event. This prevents a clean observed split between time spent waiting for the driver to reach the restaurant and subsequent restaurant/pickup activity. It does **not** prevent calculation of end-to-end delivery delay or analysis of other observed milestones. Any phase-level interpretation that depends on the missing arrival event must remain unknown rather than be estimated silently.
 
@@ -40,7 +40,7 @@ No organizational data owner is identified in the supplied materials. Entries be
 | `data/raw/order_events.csv` | Order-event export. Organizational owner unverified. | One row per order event. | Agreed lifecycle milestone summary per order. | `event_id`, `order_id`; actor fields provide context. | Timestamped workflow events with actor and source system. Event semantics and lifecycle ordering require validation. |
 | `data/raw/driver_events.json` | Local driver-telemetry file. Organizational owner unverified. | One JSON object per driver containing a nested `events` list. | First flatten to one row per event, then aggregate observed milestones/signals per order. | Parent `driver_id`; nested `order_id`, event `type`, and `timestamp`. | 120 driver documents and 10,035 nested events. No `driver_arrived_at_restaurant` event is present. This is **not** the Dispatch API response. |
 | `data/raw/order_interventions.csv` | Operations-intervention export. Organizational owner unverified. | One row per intervention. | Intervention counts, types, and timing per order. | `intervention_id`, `order_id`. | Operational rescue actions and reasons. Association with outcomes must not be presented as causal without further evidence. |
-| `data/raw/order_outcomes.csv` | Provided outcome dataset. Organizational owner and derivation lineage unverified. | One row per order. | One row per order. | `order_id`. | Normalized status, delivered/late flags, delay minutes, and outcome bucket. Phase 2 must verify derivation against observed order fields before treating these labels as authoritative. |
+| `data/raw/order_outcomes.csv` | Provided outcome dataset. Organizational owner and derivation lineage unverified. | One row per order. | One row per order. | `order_id`. | Normalized status, delivered/late flags, delay minutes, and outcome bucket. Measured comparisons found no listed disagreements, but derivation and authority remain unverified; calculated metrics use order fields instead. |
 | `data/raw/client_metric_definitions.json` | Stakeholder-definition document; no canonical KPI owner is documented. | One document containing stakeholder definitions. | Governance input; not joined as an event table. | Logical key: `metric_under_review`. | Records competing LDR interpretations. It does not record final approval. |
 | `data/raw/class7_model_brief.json` | Classroom/project brief; not an operational system of record. Owner unverified. | One project brief document. | Governance input; not joined as an event table. | No operational primary key. | States the KPI, business question, and Class 7 inputs. |
 | Local Dispatch API at `http://127.0.0.1:8000` | Reference mock of a dispatch service. Production/organizational owner unverified. | One dispatch record per order, returned in paginated response envelopes. | One row per `order_id`. | `order_id`; driver fields link to `driver_id`. | Assignment/reassignment timestamps, pickup estimate, current ETA, status, and model version. The submission-owned fixture has 1,600 unique order records and is copied byte-for-byte from the classroom fixture with provenance recorded in `mock_api/PROVENANCE.md`. Raw response pages are preserved by the extraction layer. |
@@ -56,7 +56,7 @@ No organizational data owner is identified in the supplied materials. Entries be
 | Finance | Not specified. | Operational population excluding cancelled/refunded orders. | Not specified. | Explicitly excludes cancelled/refunded orders. | Definition attributed to Finance; formal approval unverified. |
 | Data Team historical dashboard | Not fully specified. | Delivered orders with non-null actual delivery time. | Not specified in the definition file. | Cancelled orders are implicitly outside a delivered-only denominator; refund handling is not specified. | Historical implementation attributed to Data Team; canonical approval unverified. |
 
-### Unapproved working definition for Phase 2 validation
+### Unapproved working metric definition
 
 Until a KPI owner approves a contract, the analytical layer calculates a clearly labelled **candidate operational LDR** for comparison only:
 
@@ -125,9 +125,9 @@ The `logs/` and `data/processed/` directories are retained in Git with placehold
 
 ## 7. Configuration and package execution
 
-- `DISPATCH_API_URL` is the service base URL. The documented classroom default is `http://127.0.0.1:8000`; Phase 2 will append `/health` or `/dispatch/orders` as appropriate.
+- `DISPATCH_API_URL` is the service base URL. The documented classroom default is `http://127.0.0.1:8000`; the managed mock checks `/health` and extraction calls `/dispatch/orders`.
 - `.env.example` documents shell environment variables; `PipelineConfig.from_env()` reads the process environment and does not load `.env` automatically.
-- `src/pipeline/__init__.py` makes the pipeline package explicit. Until final orchestration adds an entry point, imports and tests run from the project root with `PYTHONPATH=src`, for example: `PYTHONPATH=src python3 -c "from pipeline.config import PipelineConfig"`.
+- `src/pipeline/__init__.py` makes the pipeline package explicit. The complete entry point runs from the project root as `PYTHONPATH=src .venv/bin/python -m pipeline.main --run-date YYYY-MM-DD --start-mock`.
 - The submission-owned mock service runs with `python3 -m mock_api.server`; extraction no longer depends on the sibling `reference/` directory.
 
 ## 8. Phase 3 measured quality and cleaning decisions
@@ -156,7 +156,7 @@ Structural source/schema/key failures and mismatched Dispatch order coverage rem
 
 `validate_sources(sources, dispatch)` returns copied inputs, a JSON-safe report, and `can_continue`. `clean_sources(sources, dispatch)` returns cleaned copies and a JSON-safe action report; quarantined full rows are in `cleaned["_quarantine"]`. Source-row lineage and original timestamp text are retained. Valid timestamps become Python `datetime` values without assigning a timezone to naive inputs. Known case variants of delivered/cancelled are normalized with original status retained. Unknown statuses and external outcome labels are not silently rewritten.
 
-## 9. Decision register and handoff
+## 9. Decision register
 
 ### Confirmed facts
 
@@ -174,9 +174,9 @@ Structural source/schema/key failures and mismatched Dispatch order coverage rem
 - Refund treatment remains unresolved.
 - `order_outcomes.csv` derivation lineage and authority must be checked before using its flags as truth.
 
-### Phase 4 handoff
+### Quality-layer decisions carried into the completed pipeline
 
-The Phase 2 extractor and Phase 3 quality layer now provide source-level inputs, measured defects, 1,600 canonical orders, cleaned copies and quarantine evidence. Phase 4 may continue under a WARN gate but must treat the three null traffic values as unknown, retain lineage and action evidence, keep `order_outcomes` as an unverified external label source, aggregate one-to-many children before joining, and avoid inferring missing milestones or a stakeholder-approved KPI definition. Any future critical duplicate order conflict closes the gate.
+The extractor and quality layer provide source-level inputs, measured defects, 1,600 canonical orders, cleaned copies and quarantine evidence. The completed model continues under a WARN gate: it treats three null traffic values as unknown, retains lineage and action evidence, keeps `order_outcomes` as an unverified external label source, aggregates one-to-many children before joining, and infers neither missing milestones nor stakeholder KPI approval. Any future critical duplicate order conflict closes the gate.
 
 ## 10. Phase 4 order journey and measured findings
 
@@ -195,6 +195,16 @@ The Phase 2 extractor and Phase 3 quality layer now provide source-level inputs,
 
 The larger late-versus-on-time observed segment gap is creation → pickup (about 14.02 minutes versus about 4.30 minutes for pickup → delivery). This does **not** identify the cause of lateness: promised-time allocation and the missing `driver_arrived_at_restaurant` milestone limit attribution. No statistical significance test was performed.
 
-### Phase 5 handoff
+### Publication safeguards implemented in Phase 5
 
-Publish only a model built under the explicit quality gate. Preserve its order-grain and source-row lineage, the quality/action reports, and the five metric definitions with eligibility and exclusions. Obtain KPI ownership/denominator/refund decisions before representing candidate LDR as an approved business KPI; keep external outcomes as unverified comparison labels. No orchestration or publishing is implemented in Phase 4.
+The entry point publishes only a model built under the explicit quality gate. It preserves order-grain and source-row lineage, quality/action reports, and five metric definitions with eligibility and exclusions. Candidate LDR remains unapproved until KPI ownership, denominator and refund decisions are made; external outcomes remain unverified comparison labels.
+
+## 11. Phase 5 reproducible run and publication contract
+
+`PYTHONPATH=src .venv/bin/python -m pipeline.main --run-date 2026-09-27 --start-mock` completed against the submission-owned service. The command managed its own local subprocess, checked `/health`, retrieved eight 200-record pages (including the expected one-time 500/429 retries), and shut the service down. Validation and cleaning returned WARN; the published model contains 1,600 rows and 1,600 unique IDs. The two headline results match Phase 4: candidate LDR 843/1,495 (56.39%) and >10-minute variant 349/1,495 (23.34%). The full five-analysis evidence is `data/processed/run_date=2026-09-27/metrics.json` after reproducing the run.
+
+The five-file processed partition contains `order_journey.jsonl`, `quality_report.json`, `cleaning_report.json`, `metrics.json`, and `run_manifest.json`. JSON Lines retain timestamp strings, nulls, source-row lineage, and dictionary-valued child summaries without dropping model columns. The manifest records source row counts, eight Dispatch pages, 1,600 API records, gate, model count and file inventory. Raw API pages remain separately under `data/raw/dispatch/run_date=2026-09-27/`; generated partitions and logs are Git-ignored.
+
+Analytical evidence is fully written and parsed in a temporary sibling directory before the run-date directory is replaced. A same-date rerun replaces the partition and raw API snapshot rather than appending. A FAIL source or cleaning gate returns nonzero, writes quality/cleaning diagnostics as available under `data/processed/diagnostics/run_date=YYYY-MM-DD/attempt-.../`, and does not replace any prior valid model or metrics. API and staged-write failures also leave no partial analytical partition; execution errors are logged or printed and return nonzero. The managed mock refuses an occupied configured port so it cannot silently attach to or terminate an unrelated service.
+
+Remaining business decisions are unchanged: KPI ownership/threshold-denominator approval, refund treatment, source owners/freshness, and external outcome-label authority require stakeholder resolution. No claim of causal intervention effect or observed restaurant-arrival milestone is made.
