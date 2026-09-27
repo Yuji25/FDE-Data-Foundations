@@ -1,43 +1,45 @@
 import logging
-import os
 import sys
+from pathlib import Path
+from typing import Optional, Union
 
-def setup_logger(name: str, log_level: str = "INFO", log_file: str = None) -> logging.Logger:
-    """
-    Configure standard Python logging to both console and a specified log file.
-    
-    Args:
-        name: Name of the logger
-        log_level: Desired log level (e.g., INFO, DEBUG)
-        log_file: Optional file path to output logs to
-        
-    Returns:
-        Configured logging.Logger instance
-    """
-    logger = logging.getLogger(name)
-    
-    # Avoid adding duplicate handlers if the logger is already configured
-    if logger.hasHandlers():
-        return logger
-        
+
+LogPath = Union[str, Path]
+
+
+def setup_logger(
+    name: str,
+    log_level: str = "INFO",
+    log_file: Optional[LogPath] = None,
+) -> logging.Logger:
+    """Configure a named logger with console and optional file output."""
     level = getattr(logging, log_level.upper(), logging.INFO)
+    logger = logging.getLogger(name)
     logger.setLevel(level)
-    
+    logger.propagate = False
+
+    # Configure this logger deterministically. logger.hasHandlers() also sees
+    # root handlers and could incorrectly skip installation of our handlers.
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+        handler.close()
+
     formatter = logging.Formatter(
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
-    
-    # Console Handler
+
     console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(level)
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)
-    
-    # File Handler
+
     if log_file:
-        # Ensure log directory exists
-        os.makedirs(os.path.dirname(log_file), exist_ok=True)
-        file_handler = logging.FileHandler(log_file)
+        log_path = Path(log_file)
+        # Path("pipeline.log").parent is ".", so filename-only paths work.
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        file_handler = logging.FileHandler(log_path)
+        file_handler.setLevel(level)
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
-        
+
     return logger

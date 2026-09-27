@@ -29,7 +29,9 @@ venv/
 # Environment Variables
 .env
 
-# Project specific
-logs/
-data/processed/
+# Project-specific runtime outputs (keep the scaffold directories tracked)
+logs/*
+!logs/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
 # Note: data/raw/ is explicitly NOT ignored so we can preserve the raw classroom dataset.
