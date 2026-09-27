@@ -43,7 +43,7 @@ No organizational data owner is identified in the supplied materials. Entries be
 | `data/raw/order_outcomes.csv` | Provided outcome dataset. Organizational owner and derivation lineage unverified. | One row per order. | One row per order. | `order_id`. | Normalized status, delivered/late flags, delay minutes, and outcome bucket. Phase 2 must verify derivation against observed order fields before treating these labels as authoritative. |
 | `data/raw/client_metric_definitions.json` | Stakeholder-definition document; no canonical KPI owner is documented. | One document containing stakeholder definitions. | Governance input; not joined as an event table. | Logical key: `metric_under_review`. | Records competing LDR interpretations. It does not record final approval. |
 | `data/raw/class7_model_brief.json` | Classroom/project brief; not an operational system of record. Owner unverified. | One project brief document. | Governance input; not joined as an event table. | No operational primary key. | States the KPI, business question, and Class 7 inputs. |
-| Local Dispatch API at `http://127.0.0.1:8000` | Reference mock of a dispatch service. Production/organizational owner unverified. | One dispatch record per order, returned in paginated response envelopes. | One row per `order_id`. | `order_id`; driver fields link to `driver_id`. | Assignment/reassignment timestamps, pickup estimate, current ETA, status, and model version. The reference fixture has 1,600 unique order records. Raw response pages must be preserved by Phase 2. The server and fixture currently live outside the submission project. |
+| Local Dispatch API at `http://127.0.0.1:8000` | Reference mock of a dispatch service. Production/organizational owner unverified. | One dispatch record per order, returned in paginated response envelopes. | One row per `order_id`. | `order_id`; driver fields link to `driver_id`. | Assignment/reassignment timestamps, pickup estimate, current ETA, status, and model version. The submission-owned fixture has 1,600 unique order records and is copied byte-for-byte from the classroom fixture with provenance recorded in `mock_api/PROVENANCE.md`. Raw response pages are preserved by the extraction layer. |
 
 ## 4. Late Delivery Rate contract
 
@@ -128,7 +128,7 @@ The `logs/` and `data/processed/` directories are retained in Git with placehold
 - `DISPATCH_API_URL` is the service base URL. The documented classroom default is `http://127.0.0.1:8000`; Phase 2 will append `/health` or `/dispatch/orders` as appropriate.
 - `.env.example` documents shell environment variables; `PipelineConfig.from_env()` reads the process environment and does not load `.env` automatically.
 - `src/pipeline/__init__.py` makes the pipeline package explicit. Until Phase 2 adds the single pipeline entry point, import checks should be run from the project root with `PYTHONPATH=src`, for example: `PYTHONPATH=src python3 -c "from pipeline.config import PipelineConfig"`.
-- Phase 2 must document one reproducible pipeline command. It must not depend silently on the sibling `reference/` directory in the final submission.
+- The submission-owned mock service runs with `python3 -m mock_api.server`; extraction no longer depends on the sibling `reference/` directory.
 
 ## 8. Decision register and Phase 2 handoff
 
@@ -139,6 +139,7 @@ The `logs/` and `data/processed/` directories are retained in Git with placehold
 - Orders contain duplicate `order_id` records; several child exports also contain duplicate identifiers.
 - Local driver telemetry does not contain `driver_arrived_at_restaurant`.
 - Dispatch API records and nested driver telemetry are separate sources with different grains.
+- The submission-owned standard-library mock service and byte-identical classroom fixture make Dispatch extraction reproducible from a fresh clone.
 
 ### Assumptions and unresolved decisions
 
@@ -146,8 +147,7 @@ The `logs/` and `data/processed/` directories are retained in Git with placehold
 - The candidate LDR definition above is not stakeholder-approved.
 - Refund treatment remains unresolved.
 - `order_outcomes.csv` derivation lineage and authority must be checked before using its flags as truth.
-- The final submission-owned strategy for running or substituting the classroom mock API remains a Phase 2 decision.
 
-### Phase 2 handoff
+### Extraction handoff
 
-When Phase 2 is authorized, implementation should begin with source contracts and Extract completeness evidence, then follow the approved stage order. It must preserve raw API pages, avoid modifying the 12 existing raw files, keep API and telemetry semantics separate, and must not silently resolve the KPI or source-ownership questions recorded above.
+The Phase 2 extraction layer now loads the local sources without cleaning and retrieves a complete Dispatch snapshot with retries, page/count/uniqueness evidence, raw-page preservation, and partition replacement on rerun. Future authorized stages may consume these outputs, but must not silently resolve the KPI or source-ownership questions recorded above.
